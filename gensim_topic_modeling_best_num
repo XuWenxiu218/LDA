@@ -1,0 +1,282 @@
+import re
+import logging
+import heapq
+
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.ERROR)
+import numpy as np
+import pandas as pd
+from pprint import pprint
+import warnings
+from collections import defaultdict
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+# Gensim
+import gensim
+import gensim.corpora as corpora
+from gensim.utils import simple_preprocess
+from gensim.models import CoherenceModel
+import spacy
+from gensim.models import TfidfModel
+
+# nlp = spacy.load('en_core_web_sm')
+# Plotting tools
+import pyLDAvis
+import pyLDAvis.gensim  # don't skip this
+import matplotlib.pyplot as plt
+# %matplotlib inline
+# Enable logging for gensim - optional
+import os
+import tempfile
+from gensim.test.utils import datapath
+
+TEMP_FOLDER = tempfile.gettempdir()
+import nltk
+from nltk.stem.snowball import SnowballStemmer
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+stemmer = SnowballStemmer("english")
+
+
+
+# Do lemmatization keeping only noun, adj, vb, adv
+def sent_to_words(self):
+    for doc in data:
+        # 分词，去停词
+        # yield [word for word in doc.lower().strip(string.punctuation)]
+        # yield (gensim.utils.simple_preprocess(str(data), deacc=True))
+        yield [word for word in doc.lower().split(' ')]
+
+
+def remove_stopwords(texts):
+    return [[word for word in simple_preprocess(str(doc)) if word not in stopwords] for doc in texts]
+
+
+
+
+def lemmatization(texts):
+    """https://spacy.io/api/annotation"""
+    texts_out = []
+    for sent in texts:
+        doc = nlp(" ".join(sent))
+        texts_out.append([token.lemma_ for token in doc])
+    return texts_out
+
+def make_bigrams(texts):
+    return [bigram_mod[doc] for doc in texts]
+
+
+def make_trigrams(texts):
+    return [trigram_mod[bigram_mod[doc]] for doc in texts]
+
+
+def compute_coherence_values(dictionary, corpus, texts, limit, start=2, step=1):
+    coherence_values = []
+    per_values = []
+    model_list = []
+
+    for num_topics in range(start, limit, step):
+        model = gensim.models.ldamodel.LdaModel(corpus=corpus, num_topics=num_topics, id2word=id2word, random_state=100,
+                                                update_every=1,
+                                                chunksize=100,
+                                                passes=1,
+                                                alpha='auto',
+                                                per_word_topics=True)
+        topic_ = model.print_topics()
+        print(topic_)
+
+        model_list.append(model)
+        coherencemodel = CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_npmi')
+
+        coherence_values.append(coherencemodel.get_coherence())
+
+    return model_list, coherence_values
+
+
+def format_topics_sentences(ldamodel, corpus, texts):
+    # Init output
+    sent_topics_df = pd.DataFrame()
+    # Get main topic in each document
+    for i, row in enumerate(ldamodel[corpus]):
+        row = sorted(row, key=lambda x: (x[1]), reverse=True)
+        # Get the Dominant topic, Perc Contribution and Keywords for each document
+        for j, (topic_num, prop_topic) in enumerate(row):
+            if j == 0:  # => dominant topic
+                wp = ldamodel.show_topic(topic_num)
+                topic_keywords = " ".join([word for word, prop in wp])
+                sent_topics_df = sent_topics_df.append(
+                    pd.Series([int(topic_num), round(prop_topic, 5), topic_keywords]), ignore_index=True)
+            else:
+                break
+    sent_topics_df.columns = ['Dominant_Topic', 'Perc_Contribution', 'Topic_Keywords']
+
+    # Add original text to the end of the output
+    contents = pd.Series(texts)
+    sent_topics_df = pd.concat([sent_topics_df, contents], axis=1)
+    return (sent_topics_df)
+
+
+if __name__ == '__main__':
+
+    # sim_file = open('D:\pycharm_data\output\modeling_gensim.txt', 'a')
+    stopwords = nltk.corpus.stopwords.words('english')
+    import string
+
+    data = open("E:\\doc_all.txt").read()
+    data = re.sub(r'[{}]+'.format(string.punctuation), '', data)
+    data = data.split('\n')
+    print('aaaaaaaaaaaaaaaaaaaaaaaaaa')
+    print(data)
+    data_words = list(sent_to_words(data))
+    nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+    bigram = gensim.models.Phrases(data_words, min_count=5, threshold=50)  # higher threshold fewer phrases.
+    trigram = gensim.models.Phrases(bigram[data_words], threshold=100)
+    # Faster way to get a sentence clubbed as a trigram/bigram
+    bigram_mod = gensim.models.phrases.Phraser(bigram)
+    trigram_mod = gensim.models.phrases.Phraser(trigram)
+    data_words_nostops = remove_stopwords(data_words)
+    data_words_bigrams = make_bigrams(data_words_nostops)
+    data_lemmatized = lemmatization(data_words_bigrams)
+    print(data_lemmatized)
+    frequency = defaultdict(int)
+    for text in data_lemmatized:
+        for token in text:
+            frequency[token] += 1
+    texts = [[token for token in text if frequency[token] > 1] for text in data_lemmatized]
+    num_word = 0
+    for num_ in texts:
+        a = np.size(num_)
+        num_word = num_word + a
+    print('元素的个数', num_word)
+    # Create Dictionary
+    id2word = corpora.Dictionary(texts)
+    print(id2word)
+    n_items = len(id2word)
+
+    corpus = [id2word.doc2bow(text) for text in texts]
+       tfidf_model = TfidfModel(corpus)
+    corpus_tfidf = tfidf_model[corpus]
+
+    summ = []
+
+    new_corpus = []
+
+    m_tfidf = []
+
+
+
+    for ev_doc in corpus_tfidf:
+        for tuple in ev_doc:
+            m_tfidf.append(tuple[1])
+
+    median_tf = np.median(m_tfidf)
+
+    for i, doc in enumerate(corpus_tfidf):
+        print(doc)
+        new_corpus_ = []
+        for j in range(len(doc)):
+            score = (doc[j])[1]
+            if score > median_tf:
+                new_corpus_.append(corpus[i][j])
+        new_corpus.append(new_corpus_)
+    print(new_corpus)
+    
+    tfidf_corpus = [[tuple for tuple in ev_doc_ if tuple[1] > median_tf] for ev_doc_ in corpus_tfidf]
+
+    lda_model = gensim.models.ldamodel.LdaModel(corpus=corpus,
+                                                id2word=id2word,
+                                                num_topics=26,
+                                                random_state=100,
+                                                update_every=1,
+                                                chunksize=100,
+                                                passes=1,
+                                                iterations=100,
+                                                alpha='auto',
+                                                per_word_topics=True)
+    # C:\ProgramData\Anaconda3\Lib\logging\__init__.py
+    topic_=lda_model.print_topics(num_words=30)
+    sss=open('sss.txt','w',encoding='utf-8')
+    print(topic_)
+    for topic_1 in topic_:
+        print(topic_1)
+        sss.write(str(topic_1))
+        sss.write('\n')
+    sss.close()
+
+
+    data2= open('data_26.txt', 'w', encoding='utf-8')
+
+
+
+    num_dict={}
+    doc_dict={}
+    loading_dict={}
+    doc_loading={}
+    for i in range(26):
+        num_dict[i]=0
+        loading_dict[i]=0
+        doc_dict[i]=[]
+        doc_loading[i]=[]
+    for n,corp in enumerate(corpus):
+        print(lda_model.get_document_topics(corp, minimum_probability=None, minimum_phi_value=None,
+                                            per_word_topics=False))
+        d_t=lda_model.get_document_topics(corp, minimum_probability=None, minimum_phi_value=None,
+                                            per_word_topics=False)
+        dict={}
+        for turpl in d_t:
+            dict[turpl[0]]=turpl[1]
+        print(dict)
+        id_d=max(dict, key=dict.get)
+
+        num_dict[id_d]=num_dict[id_d]+1
+        loading=dict[id_d]
+        loading_dict[id_d]=loading_dict[id_d]+loading
+        doc_dict[id_d].append(n)
+        doc_loading[id_d].append(loading)
+    print(num_dict)
+    print(loading_dict)
+    print(doc_dict)
+    print(doc_loading)
+    data2.write(str(doc_dict)+'\n')
+    data2.write(str(doc_loading) + '\n')
+
+    doc_topic_max5={}
+    doc_loading_max5={}
+    doc_TI_max5={}
+
+    TI_txt=open('E:\\TI.txt',encoding='utf-8').readlines()
+
+    for i in range(26):
+        t_loading=doc_loading[i]
+        if len(t_loading)>10:
+            re1 = list(map(t_loading.index, heapq.nlargest(10, t_loading)))
+            re2 = heapq.nlargest(10, t_loading)
+            num_doct=doc_dict[i]
+            list222=[num_doct[n] for n in re1]
+            list333=[TI_txt[m] for m in re1]
+            doc_TI_max5[i]=list333
+
+            doc_topic_max5[i]=list222
+            doc_loading_max5[i]=re2
+        else:
+            doc_topic_max5[i] = doc_dict[i]
+            doc_loading_max5[i] = doc_loading[i]
+            #list444=[TI_txt[m] for m in t_loading]
+            #doc_TI_max5[i] = list444
+
+
+
+    print(doc_loading_max5)
+    print(doc_topic_max5)
+    print(doc_TI_max5)
+    data2.write(str(doc_loading_max5) + '\n')
+    data2.write(str(doc_topic_max5) + '\n')
+    #data2.write(str(doc_TI_max5) + '\n')
+    
+    visualisation = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
+    pyLDAvis.save_html(visualisation, 'lda_vis.html')
+    pyLDAvis.show(visualisation)
+
+
+
+
