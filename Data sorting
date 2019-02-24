@@ -1,0 +1,199 @@
+import xlwt
+from xlrd import open_workbook
+import pandas as pd
+import numpy as np
+def read_txt_in(path):#将txt文件读进来
+    list1 = []
+    dict2 = {}
+    a = []
+    with open(path, 'r') as f:#
+        data = f.readlines()
+        for line in data:#按行读取
+            #print(line)
+            if line != "ER\n" and line != "\n" and line != "EF":#去除这几项，做一下操作
+                #print(line)
+                lst = line.split(' ', 1)#用空格分割，只分割一次
+                #print(lst)
+                c=lst[1].split('\n')#将第二部分的回车符号也割掉，以便于写进excel
+                lst[1]=c[0]
+                #print(lst[1])
+                if line!="DE\n" and line!="ID\n":
+                    if lst[0] == '' and lst[1] != '':
+                        c = lst[1].split(' ', 1)
+                        lst[1]=c[1]
+                        #print(b)
+                        #print(lst[1])
+                        lst[1] = b + lst[1]
+                        lst[0] = a#下面这部分是用来将处于不同行的同类数据放在一起，比如处于不同行的三个作者放在同一行
+                    #print(lst[1])
+                a = lst[0]
+                b = lst[1]
+                # if lst[0]=
+                dict1 = {
+                    lst[0]: lst[1]#将分割合并好的字符串写进字典里，每篇文章放一个字典
+                }
+                # print(dict1)
+                dict2 = dict(dict2, **dict1)#字典相加，注意，key值相同的会替代
+            elif line == "ER\n":#以出现ER\n为标志判断一篇文章结束，结束后将一个字典加入到列表里
+                list1.append(dict2)
+                # print(list1)
+                dict2 = {}
+            elif line == "\n" or line == "EF\n":
+                pass
+    return list1#返回列表，每个列表里有500个
+def listp():
+    list1_500 = read_txt_in(r"1-500.txt")
+    # print(list1_500)
+    list501_1000=read_txt_in(r"501-1000.txt")
+    list1001_1500 = read_txt_in(r"1001-1500.txt")
+    list1501_2000=read_txt_in(r"1501-2000.txt")
+    list2001_2500=read_txt_in(r"2001-2500.txt")
+    list2501_3000=read_txt_in(r"2501-3000.txt")
+    list3001_3500=read_txt_in(r"3001-3500.txt")
+    list3501_4000 = read_txt_in(r"3501-4000.txt")
+    list4001_4080 = read_txt_in(r"4001-4080.txt")
+
+    # print(list1_500)
+
+    listp = list1_500 +list501_1000+list1001_1500+list1501_2000+list2001_2500+list2501_3000+list3001_3500+list3501_4000+list4001_4080
+
+    return listp
+listp=listp()
+print(listp)
+
+
+
+def main():
+    # 将处理好的数据放在DF里面，利用df的to_excel方法直接生成excel
+      # 输入文件的路径
+
+    content_list = listp
+    df = pd.DataFrame(content_list)
+    #全部数据
+    writer = pd.ExcelWriter('all_data.xlsx', engine='xlsxwriter')
+    df.to_excel(writer,'Sheet1',index=False)
+    writer.save()
+    return
+    #AU
+    """
+    list = []
+    for i in range(len(listp)):
+          list_dict = listp[i]
+          AU = list_dict["AU"]
+          UT = list_dict["UT"]
+          all_name = AU.split('  ')
+          for j in range(len(all_name)):
+              one_name = all_name[j].split(',')
+              if len(one_name) > 1:
+                  dict_s = {
+                      'Firstname':one_name[0],
+                      'Lastname':one_name[1],
+                      'UT':UT
+                  }
+                  list.append(dict_s)
+              else:
+                  pass
+    content_list = list
+    au = pd.DataFrame(content_list)
+    au.to_excel(writer, 'Sheet_AU',index=False)
+#DE
+    list_de = []
+    for i in range(len(listp)):
+        list_ = listp[i]
+
+        DE = list_.get('DE')
+        #print(DE)
+        UT = list_['UT']
+        if DE!=None:
+            all_de = DE.split('; ')
+            for i in range(len(all_de)):
+                dict_cr = {
+                    'DE': all_de[i],
+                    'UT': UT
+                }
+                list_de.append(dict_cr)
+    content_list = list_de
+    de = pd.DataFrame(content_list)
+    de.to_excel(writer, 'Sheet_DE', index=False)
+#ID
+    list_id = []
+    for i in range(len(listp)):
+        list_ = listp[i]
+
+        ID = list_.get('ID')
+        # print(DE)
+        UT = list_['UT']
+        if ID != None:
+            all_id = ID.split('; ')
+            for i in range(len(all_id)):
+                # print(all_de[i])
+                dict_id = {
+                    'ID': all_id[i],
+                    'UT': UT
+                }
+                # print(per_de)
+                list_id.append(dict_id)
+    content_list = list_id
+    id = pd.DataFrame(content_list)
+    id.to_excel(writer, 'Sheet_ID', index=False)"""
+
+#CR
+    """""
+    list_cr = []
+    cr_=[]
+    for i in range(len(listp)):
+        list_ = listp[i]
+        CR = list_.get('CR')
+        # print(DE)
+        UT = list_['UT']
+        if CR != None:
+            all_cr = CR.split('  ')
+
+            #print(all_cr)
+
+            for i in range(len(all_cr)):
+                cr_.append(all_cr[i])
+
+                dict_cr = {
+                    'CR': all_cr[i],
+                    'UT': UT
+                }
+                # print(per_de)
+                list_cr.append(dict_cr)
+    content_list = list_cr
+    cr = pd.DataFrame(content_list)
+    writer = pd.ExcelWriter('crcr.xlsx', engine='xlsxwriter')
+    cr.to_excel(writer, 'Sheet_CR', index=False)
+    writer.save()
+    #print(cr_)
+    return list_cr"""
+
+""""
+#CR
+    list_cr = []
+    cr_=[]
+    for i in range(len(listp)):
+        list_ = listp[i]
+        CR = list_.get('CR')
+        # print(DE)
+        if CR != None:
+            all_cr = CR.split('  ')
+            for i in range(len(all_cr)):
+                cr_.append(all_cr[i])
+
+                dict_cr = {
+                    'CR': all_cr[i],
+                }
+                # print(per_de)
+                list_cr.append(dict_cr)
+    content_list = list_cr
+    cr = pd.DataFrame(content_list)
+    writer = pd.ExcelWriter('crcr.xlsx', engine='xlsxwriter')
+    cr.to_excel(writer, 'Sheet_CR', index=False)
+    writer.save()
+    #print(cr_)
+    return list_cr
+
+main()"""""
+
+main()
