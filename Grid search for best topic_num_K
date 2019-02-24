@@ -1,0 +1,231 @@
+from gensim.test.utils import common_corpus, common_dictionary, get_tmpfile
+from gensim.models import LsiModel
+import re
+import logging
+from collections import defaultdict
+
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.ERROR)
+import numpy as np
+import pandas as pd
+from pprint import pprint
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+# Gensim
+import gensim
+import gensim.corpora as corpora
+from gensim.utils import simple_preprocess
+from gensim.models import CoherenceModel
+import spacy
+from gensim.models import TfidfModel
+
+# nlp = spacy.load('en_core_web_sm')
+# Plotting tools
+import pyLDAvis
+import pyLDAvis.gensim  # don't skip this
+import matplotlib.pyplot as plt
+# %matplotlib inline
+# Enable logging for gensim - optional
+import os
+import tempfile
+
+TEMP_FOLDER = tempfile.gettempdir()
+import nltk
+from nltk.stem.snowball import SnowballStemmer
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+stemmer = SnowballStemmer("english")
+
+
+# Do lemmatization keeping only noun, adj, vb, adv
+def sent_to_words(self):
+    for doc in data:
+        # 分词，去停词
+        # yield [word for word in doc.lower().strip(string.punctuation)]
+        # yield (gensim.utils.simple_preprocess(str(data), deacc=True))
+        yield [word for word in doc.lower().split(' ')]
+
+
+def remove_stopwords(texts):
+    return [[word for word in simple_preprocess(str(doc)) if word not in stopwords] for doc in texts]
+
+
+def make_bigrams(texts):
+    return [bigram_mod[doc] for doc in texts]
+
+
+def make_trigrams(texts):
+    return [trigram_mod[bigram_mod[doc]] for doc in texts]
+
+def lemmatization(texts,allowed_postages=['NOUN','ADJ','VERB','ADV']):
+    """https://spacy.io/api/annotation"""
+    texts_out = []
+    for sent in texts:
+        doc = nlp(" ".join(sent))
+        texts_out.append([token.lemma_ for token in doc if token.pos_ in allowed_postages])
+    return texts_out
+
+
+def compute_coherence_values_lsa(dictionary, corpus, texts, limit, start=2, step=1):
+    coherence_values = []
+    per_values = []
+    model_list = []
+    perplexity_values=[]
+
+    for num_topics in range(start, limit, step):
+        lsi = LsiModel(corpus=corpus_tfidf, id2word=id2word, num_topics=num_topics)
+        #topic_ =lsi.show_topics(num_topics=-1,num_word=20)
+        #print(topic_)
+        model_list.append(lsi)
+        coherencemodel = CoherenceModel(model=lsi, texts=texts, dictionary=dictionary,topn=15, coherence='c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+    return model_list, coherence_values,perplexity_values
+
+
+def compute_coherence_values_lda(dictionary, corpus, texts, limit, start=2, step=1):
+    coherence_values = []
+    per_values = []
+    model_list = []
+    perplexity_values=[]
+
+    for num_topics in range(start, limit, step):
+        model = gensim.models.ldamodel.LdaModel(corpus=corpus, num_topics=num_topics, id2word=id2word, random_state=100,
+                                                update_every=1,
+                                                chunksize=100,
+                                                passes=1,
+                                                iterations=100,
+                                                alpha='asymmetric',
+                                                per_word_topics=True)
+        topic_ = model.print_topics()
+        print(topic_)
+
+        model_list.append(model)
+        coherencemodel = CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_v')
+
+        coherence_values.append(coherencemodel.get_coherence())
+        perplexity=model.log_perplexity(corpus)
+        perplexity_values.append(perplexity)
+
+
+
+    return model_list, coherence_values,perplexity_values
+
+
+
+
+def format_topics_sentences(ldamodel, corpus, texts):
+    # Init output
+    sent_topics_df = pd.DataFrame()
+    # Get main topic in each document
+    for i, row in enumerate(ldamodel[corpus]):
+        row = sorted(row, key=lambda x: (x[1]), reverse=True)
+        # Get the Dominant topic, Perc Contribution and Keywords for each document
+        for j, (topic_num, prop_topic) in enumerate(row):
+            if j == 0:  # => dominant topic
+                wp = ldamodel.show_topic(topic_num)
+                topic_keywords = " ".join([word for word, prop in wp])
+                sent_topics_df = sent_topics_df.append(
+                    pd.Series([int(topic_num), round(prop_topic, 5), topic_keywords]), ignore_index=True)
+            else:
+                break
+    sent_topics_df.columns = ['Dominant_Topic', 'Perc_Contribution', 'Topic_Keywords']
+
+    # Add original text to the end of the output
+    contents = pd.Series(texts)
+    sent_topics_df = pd.concat([sent_topics_df, contents], axis=1)
+    return (sent_topics_df)
+
+
+if __name__ == '__main__':
+    stopwords = nltk.corpus.stopwords.words('english')
+    import string
+    data = open("E:\\doc_all.txt").read()
+    data = re.sub(r'[{}]+'.format(string.punctuation), '', data)
+    data = data.split('\n')
+    print('aaaaaaaaaaaaaaaaaaaaaaaaaa')
+    print(data)
+    data_words = list(sent_to_words(data))
+    nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+    bigram = gensim.models.Phrases(data_words, min_count=5, threshold=50)  # higher threshold fewer phrases.
+    trigram = gensim.models.Phrases(bigram[data_words], threshold=100)
+    # Faster way to get a sentence clubbed as a trigram/bigram
+    bigram_mod = gensim.models.phrases.Phraser(bigram)
+    trigram_mod = gensim.models.phrases.Phraser(trigram)
+    data_words_nostops = remove_stopwords(data_words)
+    data_words_bigrams = make_bigrams(data_words_nostops)
+    data_lemmatized = lemmatization(data_words_bigrams)
+    print(data_lemmatized)
+    frequency = defaultdict(int)
+    for text in data_lemmatized:
+       for token in text:
+            frequency[token] += 1
+    texts = [[token for token in text if frequency[token] > 1]for text in data_lemmatized]
+    num_word=0
+    for num_ in texts:
+        a = np.size(num_)
+        num_word=num_word+a
+    print('元素的个数', num_word)
+    # Create Dictionary
+    id2word = corpora.Dictionary(texts)
+    print(id2word)
+    n_items=len(id2word)
+
+    corpus = [id2word.doc2bow(text) for text in texts]
+
+
+    tfidf_model = TfidfModel(corpus)
+    corpus_tfidf = tfidf_model[corpus]
+
+    summ = []
+
+    new_corpus = []
+
+    m_tfidf = []
+
+
+
+    for ev_doc in corpus_tfidf:
+        for tuple in ev_doc:
+            m_tfidf.append(tuple[1])
+
+    median_tf = np.median(m_tfidf)
+
+    for i, doc in enumerate(corpus_tfidf):
+        print(doc)
+        new_corpus_ = []
+        for j in range(len(doc)):
+            score = (doc[j])[1]
+            if score > median_tf:
+                new_corpus_.append(corpus[i][j])
+        new_corpus.append(new_corpus_)
+    print(new_corpus)
+
+
+    tfidf_corpus = [[tuple for tuple in ev_doc_ if tuple[1] > median_tf] for ev_doc_ in corpus_tfidf]
+
+    model_list_lda, coherence_values_lda, Perplexity_values_lda = compute_coherence_values_lda(dictionary=id2word, corpus=corpus,
+                                                                               texts=texts,
+                                                                               start=13, limit=73, step=1)
+
+    #model_list_lsa, coherence_values_lsa, Perplexity_values_lsa = compute_coherence_values_lsa(dictionary=id2word, corpus=corpus_tfidf,
+                                                                              # texts=texts,
+                                                                              # start=13, limit=43, step=1)
+
+    limit = 73
+    start = 13
+    step = 1
+    x = range(start, limit, step)
+
+    plt.plot(x, coherence_values_lda, color='red')
+   # plt.plot(x, coherence_values_lsa, color='blue')
+
+    plt.legend(("coherence_values"), loc='upper right')
+    plt.savefig(u"doc_all_LDA_13_73_1步_n-gram5-50迭代次数100.png")
+    plt.show()
+
+    # Print the coherence scores
+    for m, cv in zip(x, coherence_values_lda):
+        print("Num Topics =", m, " lda has Coherence Value of", round(cv, 5))
+    #for m, cv in zip(x, coherence_values_lsa):
+       # print("Num Topics =", m, " lsa has Coherence Value of", round(cv, 5))
